@@ -1,0 +1,402 @@
+import flet as ft
+import base64
+import requests
+from pathlib import Path
+import io
+from PIL import Image
+
+# URL of the locally running model server
+MODEL_SERVER_URL = "http://127.0.0.1:5000/predict"
+
+def main(page: ft.Page):
+    page.title = "AI-Powered Diamond Classification System"
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.vertical_alignment = ft.MainAxisAlignment.START
+    page.padding = 20
+    page.scroll = "adaptive"
+    
+    # State variables
+    uploaded_image = None
+    current_image_base64 = None
+    
+    # UI Components
+    title = ft.Text(
+        "Diamond Feature Identification System",
+        size=32,
+        weight="bold",
+        color=ft.colors.BLUE_900
+    )
+    
+    subtitle = ft.Text(
+        "Upload a diamond image for AI-powered quality assessment",
+        size=16,
+        color=ft.colors.GREY_700
+    )
+    
+    # Image display area
+    image_display = ft.Container(
+        content=ft.Column(
+            [
+                ft.Icon(
+                    ft.icons.IMAGE_OUTLINED,
+                    size=100,
+                    color=ft.colors.GREY_400
+                ),
+                ft.Text(
+                    "No image uploaded",
+                    size=16,
+                    color=ft.colors.GREY_600
+                )
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER
+        ),
+        width=640,
+        height=480,
+        border=ft.border.all(2, ft.colors.GREY_400),
+        border_radius=10,
+        alignment=ft.alignment.center,
+        bgcolor=ft.colors.GREY_100
+    )
+    
+    # Results display area
+    results_container = ft.Container(
+        visible=False,
+        padding=20,
+        border=ft.border.all(2, ft.colors.BLUE_200),
+        border_radius=10,
+        bgcolor=ft.colors.BLUE_50,
+        width=640
+    )
+    
+    # Status/Error message
+    status_text = ft.Text(
+        value="",
+        size=14,
+        color=ft.colors.RED_700,
+        visible=False
+    )
+    
+    # Loading indicator
+    loading_indicator = ft.ProgressRing(visible=False)
+    
+    def create_result_row(label, value, confidence=None, is_flagged=False):
+        """Create a formatted result row with optional confidence score"""
+        confidence_color = ft.colors.RED_700 if is_flagged else ft.colors.GREEN_700
+        
+        row_content = [
+            ft.Text(
+                f"{label}:",
+                size=16,
+                weight="bold",
+                width=150
+            ),
+            ft.Text(
+                str(value),
+                size=16,
+                width=200
+            )
+        ]
+        
+        if confidence is not None:
+            confidence_text = ft.Text(
+                f"{confidence}%",
+                size=14,
+                color=confidence_color,
+                weight="bold"
+            )
+            
+            if is_flagged:
+                row_content.append(
+                    ft.Row([
+                        confidence_text,
+                        ft.Icon(
+                            ft.icons.WARNING_AMBER_ROUNDED,
+                            color=ft.colors.RED_700,
+                            size=20
+                        ),
+                        ft.Text(
+                            "Review Needed",
+                            size=12,
+                            color=ft.colors.RED_700,
+                            italic=True
+                        )
+                    ])
+                )
+            else:
+                row_content.append(confidence_text)
+        
+        return ft.Row(
+            row_content,
+            spacing=10
+        )
+    
+    def display_results(result_data):
+        """Display the prediction results with confidence scores"""
+        
+        # Extract results from the server response
+        polish = result_data.get("polish", "N/A")
+        polish_conf = result_data.get("polish_confidence", 0)
+        
+        symmetry = result_data.get("symmetry", "N/A")
+        symmetry_conf = result_data.get("symmetry_confidence", 0)
+        
+        fluorescence = result_data.get("fluorescence", "N/A")
+        fluorescence_conf = result_data.get("fluorescence_confidence", 0)
+        
+        clarity = result_data.get("clarity", "N/A")
+        clarity_conf = result_data.get("clarity_confidence", 0)
+        
+        cut = result_data.get("cut", "N/A")
+        cut_conf = result_data.get("cut_confidence", 0)
+        
+        shape = result_data.get("shape", "N/A")
+        shape_conf = result_data.get("shape_confidence", 0)
+        
+        color = result_data.get("color", "N/A")
+        color_conf = result_data.get("color_confidence", 0)
+        
+        # Confidence threshold for flagging
+        CONFIDENCE_THRESHOLD = 80
+        
+        # Build results display
+        results_content = ft.Column([
+            ft.Text(
+                "Diamond Classification Results",
+                size=20,
+                weight="bold",
+                color=ft.colors.BLUE_900
+            ),
+            ft.Divider(height=20, color=ft.colors.BLUE_300),
+            
+            create_result_row("Polish", polish, polish_conf, polish_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Symmetry", symmetry, symmetry_conf, symmetry_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Fluorescence", fluorescence, fluorescence_conf, fluorescence_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Clarity", clarity, clarity_conf, clarity_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Cut", cut, cut_conf, cut_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Shape", shape, shape_conf, shape_conf < CONFIDENCE_THRESHOLD),
+            create_result_row("Color", color, color_conf, color_conf < CONFIDENCE_THRESHOLD),
+            
+            ft.Divider(height=20, color=ft.colors.BLUE_300),
+            
+            # Warning if any confidence is low
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.icons.INFO_OUTLINE, color=ft.colors.ORANGE_700),
+                    ft.Text(
+                        "Results flagged with ⚠️ have confidence below 80% and should be reviewed by an expert.",
+                        size=12,
+                        color=ft.colors.ORANGE_900,
+                        italic=True
+                    )
+                ]),
+                visible=any([
+                    polish_conf < CONFIDENCE_THRESHOLD,
+                    symmetry_conf < CONFIDENCE_THRESHOLD,
+                    fluorescence_conf < CONFIDENCE_THRESHOLD,
+                    clarity_conf < CONFIDENCE_THRESHOLD,
+                    cut_conf < CONFIDENCE_THRESHOLD,
+                    shape_conf < CONFIDENCE_THRESHOLD,
+                    color_conf < CONFIDENCE_THRESHOLD
+                ])
+            )
+        ])
+        
+        results_container.content = results_content
+        results_container.visible = True
+        page.update()
+    
+    def on_file_picked(e: ft.FilePickerResultEvent):
+        """Handle file selection"""
+        nonlocal current_image_base64
+        
+        if e.files and len(e.files) > 0:
+            try:
+                # Read the uploaded file
+                file_path = e.files[0].path
+                
+                # Open and process the image
+                img = Image.open(file_path)
+                
+                # Resize for display (maintain aspect ratio)
+                img.thumbnail((640, 480), Image.Resampling.LANCZOS)
+                
+                # Convert to base64 for display and API
+                buffer = io.BytesIO()
+                img.save(buffer, format="PNG")
+                img_data = buffer.getvalue()
+                buffer.close()
+                current_image_base64 = base64.b64encode(img_data).decode("utf-8")
+                
+                # Display the image
+                image_display.content = ft.Image(
+                    src_base64=current_image_base64,
+                    width=640,
+                    height=480,
+                    fit=ft.ImageFit.CONTAIN
+                )
+                
+                # Enable analyze button
+                analyze_button.disabled = False
+                
+                # Hide previous results and status
+                results_container.visible = False
+                status_text.visible = False
+                
+                page.update()
+                
+            except Exception as ex:
+                status_text.value = f"Error loading image: {str(ex)}"
+                status_text.visible = True
+                status_text.color = ft.colors.RED_700
+                page.update()
+    
+    def analyze_image(e):
+        """Send image to model server for analysis"""
+        if current_image_base64 is None:
+            status_text.value = "Please upload an image first"
+            status_text.visible = True
+            status_text.color = ft.colors.RED_700
+            page.update()
+            return
+        
+        # Show loading indicator
+        loading_indicator.visible = True
+        analyze_button.disabled = True
+        status_text.visible = False
+        results_container.visible = False
+        page.update()
+        
+        try:
+            # Send image to model server
+            response = requests.post(
+                MODEL_SERVER_URL,
+                json={"image": current_image_base64},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Check if the response indicates an error
+                if "error" in result:
+                    status_text.value = f"Model Error: {result['error']}"
+                    status_text.visible = True
+                    status_text.color = ft.colors.RED_700
+                else:
+                    # Display the results
+                    display_results(result)
+                    status_text.visible = False
+                    
+            else:
+                status_text.value = f"Server Error: {response.status_code} - {response.text}"
+                status_text.visible = True
+                status_text.color = ft.colors.RED_700
+                
+        except requests.exceptions.Timeout:
+            status_text.value = "Request timed out. Please try again."
+            status_text.visible = True
+            status_text.color = ft.colors.RED_700
+            
+        except requests.exceptions.ConnectionError:
+            status_text.value = "Cannot connect to model server. Please ensure the server is running."
+            status_text.visible = True
+            status_text.color = ft.colors.RED_700
+            
+        except Exception as ex:
+            status_text.value = f"Error: {str(ex)}"
+            status_text.visible = True
+            status_text.color = ft.colors.RED_700
+            
+        finally:
+            # Hide loading indicator and re-enable button
+            loading_indicator.visible = False
+            analyze_button.disabled = False
+            page.update()
+    
+    def reset_ui(e):
+        """Reset the UI to initial state"""
+        nonlocal current_image_base64
+        current_image_base64 = None
+        
+        image_display.content = ft.Column(
+            [
+                ft.Icon(
+                    ft.icons.IMAGE_OUTLINED,
+                    size=100,
+                    color=ft.colors.GREY_400
+                ),
+                ft.Text(
+                    "No image uploaded",
+                    size=16,
+                    color=ft.colors.GREY_600
+                )
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER
+        )
+        
+        results_container.visible = False
+        status_text.visible = False
+        analyze_button.disabled = True
+        page.update()
+    
+    # File picker
+    file_picker = ft.FilePicker(on_result=on_file_picked)
+    page.overlay.append(file_picker)
+    
+    # Buttons
+    upload_button = ft.ElevatedButton(
+        "Upload Diamond Image",
+        icon=ft.icons.UPLOAD_FILE,
+        on_click=lambda _: file_picker.pick_files(
+            allowed_extensions=["png", "jpg", "jpeg", "bmp"],
+            dialog_title="Select a diamond image"
+        ),
+        style=ft.ButtonStyle(
+            color=ft.colors.WHITE,
+            bgcolor=ft.colors.BLUE_700
+        )
+    )
+    
+    analyze_button = ft.ElevatedButton(
+        "Analyze Diamond",
+        icon=ft.icons.ANALYTICS,
+        on_click=analyze_image,
+        disabled=True,
+        style=ft.ButtonStyle(
+            color=ft.colors.WHITE,
+            bgcolor=ft.colors.GREEN_700
+        )
+    )
+    
+    reset_button = ft.OutlinedButton(
+        "Reset",
+        icon=ft.icons.REFRESH,
+        on_click=reset_ui
+    )
+    
+    # Layout
+    page.add(
+        ft.Column(
+            [
+                title,
+                subtitle,
+                ft.Divider(height=20, color=ft.colors.TRANSPARENT),
+                image_display,
+                ft.Row(
+                    [upload_button, analyze_button, reset_button, loading_indicator],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=10
+                ),
+                status_text,
+                ft.Divider(height=20, color=ft.colors.TRANSPARENT),
+                results_container
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=10
+        )
+    )
+
+if __name__ == "__main__":
+    ft.app(target=main)

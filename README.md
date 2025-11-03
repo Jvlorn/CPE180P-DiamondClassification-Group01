@@ -6,6 +6,13 @@ This project implements a local client-server diamond quality grading system usi
 
 ## 📦 System Overview
 
+**📂 Dataset Source**
+The diamond image dataset used for training is publicly available on Kaggle and **is not included in this repository** to reduce storage size. You can download it from:
+
+🔗 [https://www.kaggle.com/datasets/aayushpurswani/diamond-images-dataset/data](https://www.kaggle.com/datasets/aayushpurswani/diamond-images-dataset/data)
+
+After downloading, place the dataset in the appropriate directory (e.g., `data/diamonds/`) before running `training.py`.
+
 The system uses a local network setup with two main components, optimized for Raspberry Pi deployment:
 
 * **Server (Backend):**
@@ -128,9 +135,18 @@ The `/predict` endpoint returns a JSON response:
 ## 🖥 Client Features
 
 * Connect to FastAPI server.
-* Upload diamond images.
+* Upload or capture diamond images.
 * Display prediction results with confidence levels.
 * Color-coded confidence indicators (green, orange, red).
+
+---
+
+## 🚀 Future Improvements
+
+* Add camera capture directly from Raspberry Pi.
+* Support batch image processing.
+* Enhance UI/UX with result history.
+* Optimize training using data augmentation and EfficientNet.
 
 ---
 
@@ -179,4 +195,3 @@ https://<modelarts-endpoint>/predict
 No code change is required — just the URL input.
 
 ---
-

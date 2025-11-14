@@ -1,4 +1,4 @@
-# server_fixed.py - Server that matches the trained model's architecture
+# server.py - Server that matches the trained model's architecture
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -339,8 +339,9 @@ async def predict_diamond(file: UploadFile = File(...)):
 if __name__ == "__main__":
     print("🔍 Starting server with architecture detection...")
     uvicorn.run(
-        "server_fixed:app",
+        "server:app",
         host="0.0.0.0",
         port=8000,
         reload=False
+
     )
